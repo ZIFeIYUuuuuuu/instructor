@@ -7,6 +7,7 @@ from typing import Any, cast
 from pydantic import BaseModel
 
 from instructor.v2.core.decorators import register_mode_handler
+from instructor.v2.core.errors import IncompleteOutputException
 from instructor.v2.core.handler import ModeHandler
 from instructor.v2.core.mode import Mode
 from instructor.v2.core.multimodal import extract_genai_multimodal_content
@@ -17,6 +18,7 @@ from instructor.v2.dsl.parallel import ParallelBase
 from instructor.v2.dsl.partial import Partial, PartialBase
 from instructor.v2.dsl.simple_type import AdapterBase
 from instructor.v2.providers.gemini import utils as gemini_utils
+from instructor.v2.providers.genai.request import update_genai_kwargs
 
 
 def reask_genai_tools(
@@ -319,6 +321,19 @@ class GenAIHandlerBase(ModeHandler):
                 return generator
             return list(generator)
 
+        # A response truncated at max_tokens is not evaluable: the model never
+        # emitted the remaining fields, so parsing it yields schema defaults that
+        # are indistinguishable from values the model actually chose.
+        # Restores the check shipped in v1.15.0 (#2232), dropped by 60cc815.
+        from google.genai import types as genai_types
+
+        candidates = getattr(response, "candidates", None)
+        if (
+            candidates
+            and candidates[0].finish_reason == genai_types.FinishReason.MAX_TOKENS
+        ):
+            raise IncompleteOutputException(last_completion=response)
+
         if self.mode == Mode.TOOLS:
             model = parse_genai_tools(
                 response_model,
@@ -417,7 +432,7 @@ class GenAIToolsHandler(GenAIHandlerBase):
         }
         # Temporarily put generation_config back for update_genai_kwargs to process
         new_kwargs["generation_config"] = generation_config_dict
-        generation_config = gemini_utils.update_genai_kwargs(new_kwargs, base_config)
+        generation_config = update_genai_kwargs(new_kwargs, base_config)
         new_kwargs.pop("generation_config", None)  # Remove it after processing
         new_kwargs["config"] = types.GenerateContentConfig(**generation_config)
         new_kwargs = self._convert_messages_to_contents(new_kwargs, autodetect_images)
@@ -488,7 +503,7 @@ class GenAIStructuredOutputsHandler(GenAIHandlerBase):
         }
         # Temporarily put generation_config back for update_genai_kwargs to process
         new_kwargs["generation_config"] = generation_config_dict
-        generation_config = gemini_utils.update_genai_kwargs(new_kwargs, base_config)
+        generation_config = update_genai_kwargs(new_kwargs, base_config)
         new_kwargs.pop("generation_config", None)  # Remove it after processing
         new_kwargs["config"] = types.GenerateContentConfig(**generation_config)
         new_kwargs = self._convert_messages_to_contents(new_kwargs, autodetect_images)
