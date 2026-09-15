@@ -9,6 +9,9 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed
+- **v2 iterable response models**: `list[CustomClass]` now raises an explicit `TypeError` instead of an opaque Pydantic schema error. Element types Pydantic can represent — `list[Enum]`, `list[date]`, `list[Decimal]`, `list[UUID]`, `list[dataclass]`, `list[Literal[...]]`, `list[Annotated[...]]`, `Iterable[int]` — keep the adapter they used before. ([#2613](https://github.com/567-labs/instructor/issues/2613), [#2629](https://github.com/567-labs/instructor/pull/2629))
+
 ## [1.17.0] - 2026-09-04
 
 Includes the fixes previously planned for 1.16.1, which was not published. The
